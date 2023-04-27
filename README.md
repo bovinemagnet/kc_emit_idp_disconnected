@@ -26,27 +26,22 @@ from (
       where ipm.federated_username is null
       and ue.realm_id = 'realm'
 ) AS ISSUES
-WHERE age_in_sec > 58;
+WHERE age_in_sec > 60;
 ```
 
 ## To Execute
 
 ```bash
 Usage of kc_emit_idp_disconnected:
--dbHost string
-Database Name (default "localhost")
--dbName string
-Database Name (default "keycloak")
--dbPassword string
-Database password (default "keycloak")
--dbPort string
-Database Port (default "5432")
--dbUsername string
-Database username (default "keycloak")
--emitZero
-If not set, do not emit zero values, ie if none found, do not emit a message to the logger.
--logKey string
-Log Key for the emitting to sys-logger (default "auth_idp_disconnect_issue_count")
--realm string
-Keycloak Realm (default "master")
+-U, --username string   Database username. (default "keycloak")
+-W, --password string   Database password. (default "keycloak")
+-d, --dbname string     Database Name. (default "keycloak")
+-h, --host string       Specifies the host name of the machine on which the server is running. (default "localhost")
+-p, --port int          Database Port. (default 5432)
+-0, --skipZero          Do not emit a message to the logger if the result count is zero.
+-r, --realm string      Keycloak Realm (default "master")
+-k, --logKey string     Log Key for the emitting to sys-logger. (default "auth_idp_disconnect_issue_count")
+-s, --skipSec int       Skip seconds, ie if the user was created less than this many seconds ago, do not emit a message to the logger, as it is excluded from the results. (default 60)
+-g, --logTag string     Log Tag for the emitting to sys-logger. (default "keycloak")
+pflag: help requested
 ```

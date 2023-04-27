@@ -2,16 +2,35 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"log/syslog"
 	"os"
+	"path/filepath"
 
 	"github.com/jackc/pgx/v5"
+	flag "github.com/spf13/pflag"
+)
+
+const (
+	USERNAME = "keycloak"
+	PASSWORD = "keycloak"
+	PORT     = 5432
+	SKIP_SEC = 60
 )
 
 func main() {
+
+	// Get the path to the executable file
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Println("[M]  Error:", err)
+		return
+	}
+
+	// Get the name of the executable file
+	exeName := filepath.Base(exePath)
+
 	// Parse command-line arguments
 	var (
 		username string
@@ -19,24 +38,33 @@ func main() {
 		realm    string
 		dbName   string
 		dbHost   string
-		dbPort   string
+		dbPort   int
 		logKey   string
-		emitZero bool
+		skipZero bool
+		skipSec  int
+		logTag   string
 	)
 
-	flag.StringVar(&username, "dbUsername", "keycloak", "Database username")
-	flag.StringVar(&password, "dbPassword", "keycloak", "Database password")
-	flag.StringVar(&dbName, "dbName", "keycloak", "Database Name")
-	flag.StringVar(&dbHost, "dbHost", "localhost", "Database Name")
-	flag.StringVar(&dbPort, "dbPort", "5432", "Database Port")
-	flag.BoolVar(&emitZero, "emitZero", false, "If not set, do not emit zero values, ie if none found, do not emit a message to the logger.")
+	flag.NewFlagSet("Find Disconnected IDP Users in Keycloak", flag.ExitOnError)
 
-	flag.StringVar(&realm, "realm", "master", "Keycloak Realm")
-	flag.StringVar(&logKey, "logKey", "auth_idp_disconnect_issue_count", "Log Key for the emitting to sys-logger")
+	flag.StringVarP(&username, "username", "U", USERNAME, "Database username.")
+	flag.StringVarP(&password, "password", "W", PASSWORD, "Database password.")
+	flag.StringVarP(&dbName, "dbname", "d", "keycloak", "Database Name.")
+	flag.StringVarP(&dbHost, "host", "h", "localhost", "Specifies the host name of the machine on which the server is running.")
+	flag.IntVarP(&dbPort, "port", "p", PORT, "Database Port.")
+	flag.BoolVarP(&skipZero, "skipZero", "0", false, "Do not emit a message to the logger if the result count is zero.")
+
+	flag.StringVarP(&realm, "realm", "r", "master", "Keycloak Realm")
+	flag.StringVarP(&logKey, "logKey", "k", "auth_idp_disconnect_issue_count", "Log Key for the emitting to sys-logger.")
+	flag.IntVarP(&skipSec, "skipSec", "s", SKIP_SEC, "Skip seconds, ie if the user was created less than this many seconds ago, do not emit a message to the logger, as it is excluded from the results.")
+	flag.StringVarP(&logTag, "logTag", "g", "keycloak", "Log Tag for the emitting to sys-logger.")
+	flag.CommandLine.SortFlags = false
 	flag.Parse()
 
+	log.Printf("[START] %s", exeName)
+
 	//urlExample := "postgres://username:password@localhost:5432/database_name"
-	dbUrl := fmt.Sprintf("postgres://%s:%s@%s:%s/%s",
+	dbUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 		username,
 		password,
 		dbHost, dbPort, dbName)
@@ -47,7 +75,8 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
-	sqlQuery := fmt.Sprintf("select count(*) from (select ue.id, ue.email, ue.first_name, ue.last_name, ue.realm_id, ue.username, ue.created_timestamp, ipm.federated_user_id, ipm.federated_username, ipm.user_id, (round(extract(epoch from current_timestamp) ) - created_timestamp /1000) as age_in_sec from user_entity ue left join federated_identity ipm on ( ue.id = ipm.user_id) where ipm.federated_username is null and ue.realm_id = '%s') AS ISSUES WHERE age_in_sec > 58;", realm)
+	// Create the SQL Query to run against the keycloak database
+	sqlQuery := fmt.Sprintf("select count(*) from (select ue.id, ue.email, ue.first_name, ue.last_name, ue.realm_id, ue.username, ue.created_timestamp, ipm.federated_user_id, ipm.federated_username, ipm.user_id, (round(extract(epoch from current_timestamp) ) - created_timestamp /1000) as age_in_sec from user_entity ue left join federated_identity ipm on ( ue.id = ipm.user_id) where ipm.federated_username is null and ue.realm_id = '%s') AS ISSUES WHERE age_in_sec > %d;", realm, skipSec)
 
 	// Query the database for the number of rows in a table
 	var count int
@@ -65,14 +94,14 @@ func main() {
 	}
 
 	// If we are emitting zero values, or if the count is greater than zero, emit the message
-	if (emitZero) || (count > 0) {
-		syslogWriter, err := syslog.New(priority, "keycloak")
+	if (count > 0) || (!skipZero) {
+		syslogWriter, err := syslog.New(priority, logTag)
 		if err != nil {
 			log.Fatal(err)
 		}
-		message := fmt.Sprintf("auth_idp_disconnect_issue_count=%d", count)
+		message := fmt.Sprintf("%s=%d", logKey, count)
 		syslogWriter.Info(message)
 	}
-
-	fmt.Printf("[%s] auth_idp_disconnect_issue_count=%d\n", realm, count)
+	log.Printf("dbhost=%s  dbname=%s  realm=%s  %s=%d\n", dbHost, dbName, realm, logKey, count)
+	log.Printf("[END] %s", exeName)
 }
