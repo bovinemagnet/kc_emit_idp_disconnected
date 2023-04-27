@@ -76,7 +76,7 @@ func main() {
 	defer conn.Close(context.Background())
 
 	// Create the SQL Query to run against the keycloak database
-	sqlQuery := fmt.Sprintf("select count(*) from (select ue.id, ue.email, ue.first_name, ue.last_name, ue.realm_id, ue.username, ue.created_timestamp, ipm.federated_user_id, ipm.federated_username, ipm.user_id, (round(extract(epoch from current_timestamp) ) - created_timestamp /1000) as age_in_sec from user_entity ue left join federated_identity ipm on ( ue.id = ipm.user_id) where ipm.federated_username is null and ue.realm_id = '%s') AS ISSUES WHERE age_in_sec > %d;", realm, skipSec)
+	sqlQuery := fmt.Sprintf("select count(*) from (select ue.id, ue.email, ue.first_name, ue.last_name, r.name as realm_name, ue.username, ue.created_timestamp, ipm.federated_user_id, ipm.federated_username, ipm.user_id, (round(extract(epoch from current_timestamp) ) - created_timestamp /1000) as age_in_sec from user_entity ue LEFT JOIN REALM as R on (ue.realm_id = r.id) LEFT JOIN federated_identity ipm on ( ue.id = ipm.user_id) where ipm.federated_username is null and r.name = '%s') AS ISSUES WHERE age_in_sec > %d;", realm, skipSec)
 
 	// Query the database for the number of rows in a table
 	var count int
